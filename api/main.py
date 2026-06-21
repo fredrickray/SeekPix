@@ -2,16 +2,20 @@
 
 from __future__ import annotations
 
+import io
 import shutil
 import tempfile
+from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Optional
+from typing import AsyncIterator, Optional
 
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
 from core.config import get_settings
+from core.ingestion.image_io import load_image
 from core.services.context import get_context
 from core.services.indexing import index_folder
 from core.services.search import (
@@ -21,11 +25,33 @@ from core.services.search import (
     search_photos,
     verify_faces,
 )
+from core.storage.models import Photo
+
+# Formats every browser can render directly; anything else is transcoded to JPEG
+# on the way out, which matters because iPhone libraries are mostly HEIC.
+WEB_SAFE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"}
+WEB_SAFE_MEDIA_TYPES = {
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".webp": "image/webp",
+    ".gif": "image/gif",
+    ".bmp": "image/bmp",
+}
+
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    settings = get_settings()
+    settings.ensure_dirs()
+    get_context(settings)
+    yield
+
 
 app = FastAPI(
     title="SeekPix API",
     version="0.1.0",
     description="Local photo search and face verification backend",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -50,10 +76,20 @@ class IndexRequest(BaseModel):
 
 class PhotoOut(BaseModel):
     id: int
-    filepath: str
     filename: str
-    thumbnail_path: Optional[str] = None
+    thumbnail_url: str
+    image_url: str
     score: Optional[float] = None
+
+    @classmethod
+    def from_photo(cls, photo: Photo, score: Optional[float] = None) -> "PhotoOut":
+        return cls(
+            id=photo.id,
+            filename=photo.filename,
+            thumbnail_url=f"/photos/{photo.id}/thumbnail",
+            image_url=f"/photos/{photo.id}/file",
+            score=score,
+        )
 
 
 class FaceMatchOut(BaseModel):
@@ -81,13 +117,6 @@ class VerifyOut(BaseModel):
     matched: Optional[bool] = None
 
 
-@app.on_event("startup")
-def _startup() -> None:
-    settings = get_settings()
-    settings.ensure_dirs()
-    get_context(settings)
-
-
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok"}
@@ -104,30 +133,42 @@ def photos(
     offset: int = Query(0, ge=0),
 ) -> list[PhotoOut]:
     items = list_library(limit=limit, offset=offset)
-    return [
-        PhotoOut(
-            id=p.id,
-            filepath=p.filepath,
-            filename=p.filename,
-            thumbnail_path=p.thumbnail_path,
+    return [PhotoOut.from_photo(p) for p in items]
+
+
+@app.get("/photos/{photo_id}/thumbnail")
+def photo_thumbnail(photo_id: int) -> FileResponse:
+    photo = _get_photo_or_404(photo_id)
+    if not photo.thumbnail_path:
+        raise HTTPException(
+            status_code=404, detail=f"No thumbnail for photo {photo_id}"
         )
-        for p in items
-    ]
+    path = Path(photo.thumbnail_path)
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail=f"Thumbnail missing: {path.name}")
+    return FileResponse(path, media_type="image/jpeg")
+
+
+@app.get("/photos/{photo_id}/file")
+def photo_file(photo_id: int) -> Response:
+    photo = _get_photo_or_404(photo_id)
+    path = Path(photo.filepath)
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail=f"Image missing: {path.name}")
+
+    suffix = path.suffix.lower()
+    if suffix in WEB_SAFE_SUFFIXES:
+        return FileResponse(path, media_type=WEB_SAFE_MEDIA_TYPES[suffix])
+
+    buffer = io.BytesIO()
+    load_image(path).save(buffer, format="JPEG", quality=90)
+    return Response(content=buffer.getvalue(), media_type="image/jpeg")
 
 
 @app.post("/search", response_model=list[PhotoOut])
 def search(body: SearchRequest) -> list[PhotoOut]:
     results = search_photos(body.query, top_k=body.top_k)
-    return [
-        PhotoOut(
-            id=r.photo.id,
-            filepath=r.photo.filepath,
-            filename=r.photo.filename,
-            thumbnail_path=r.photo.thumbnail_path,
-            score=r.score,
-        )
-        for r in results
-    ]
+    return [PhotoOut.from_photo(r.photo, score=r.score) for r in results]
 
 
 @app.post("/index", response_model=IndexOut)
@@ -159,13 +200,7 @@ async def faces_find(
         matches = find_same_person(tmp, top_k=top_k, threshold=threshold)
         return [
             FaceMatchOut(
-                photo=PhotoOut(
-                    id=m.photo.id,
-                    filepath=m.photo.filepath,
-                    filename=m.photo.filename,
-                    thumbnail_path=m.photo.thumbnail_path,
-                    score=m.score,
-                ),
+                photo=PhotoOut.from_photo(m.photo, score=m.score),
                 face_id=m.face.id,
                 score=m.score,
             )
@@ -190,6 +225,13 @@ async def faces_verify(
     finally:
         path_a.unlink(missing_ok=True)
         path_b.unlink(missing_ok=True)
+
+
+def _get_photo_or_404(photo_id: int) -> Photo:
+    photo = get_context().db.get_photo(photo_id)
+    if photo is None:
+        raise HTTPException(status_code=404, detail=f"No photo with id {photo_id}")
+    return photo
 
 
 def _save_upload(upload: UploadFile) -> Path:

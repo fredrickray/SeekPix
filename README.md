@@ -37,6 +37,33 @@ python scripts/index_folder.py --folder /path/to/photos
 uvicorn api.main:app --reload --port 8000
 ```
 
+## API
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /health` | Liveness check |
+| `GET /stats` | Photo / face / vector counts |
+| `GET /photos?limit=&offset=` | Browse the library |
+| `GET /photos/{id}/thumbnail` | Thumbnail bytes (always JPEG) |
+| `GET /photos/{id}/file` | Full image; non-web formats such as HEIC are transcoded to JPEG |
+| `POST /search` | `{"query": "red car", "top_k": 10}` |
+| `POST /index` | `{"folder": "/path/to/photos"}` |
+| `POST /faces/find` | Upload a probe face, get photos containing that person |
+| `POST /faces/verify` | Upload two photos, get a similarity score |
+
+Photo responses carry `thumbnail_url` and `image_url` rather than server
+filesystem paths, so the frontend can render them directly:
+
+```json
+{
+  "id": 16,
+  "filename": "IMG_6337.JPEG",
+  "thumbnail_url": "/photos/16/thumbnail",
+  "image_url": "/photos/16/file",
+  "score": 0.251
+}
+```
+
 ## Build phases
 
 | Phase | Scope |
