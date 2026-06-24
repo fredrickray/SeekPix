@@ -56,10 +56,12 @@ def api_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 def test_photos_expose_urls_not_filesystem_paths(api_client) -> None:
     client, photo_id = api_client
     body = client.get("/photos").json()
-    assert body[0]["thumbnail_url"] == f"/photos/{photo_id}/thumbnail"
-    assert body[0]["image_url"] == f"/photos/{photo_id}/file"
-    assert "filepath" not in body[0]
-    assert "thumbnail_path" not in body[0]
+    assert body["total"] == 1
+    item = body["items"][0]
+    assert item["thumbnail_url"] == f"/photos/{photo_id}/thumbnail"
+    assert item["image_url"] == f"/photos/{photo_id}/file"
+    assert "filepath" not in item
+    assert "thumbnail_path" not in item
 
 
 def test_thumbnail_is_served_as_jpeg(api_client) -> None:

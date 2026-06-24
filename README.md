@@ -43,13 +43,31 @@ uvicorn api.main:app --reload --port 8000
 |---|---|
 | `GET /health` | Liveness check |
 | `GET /stats` | Photo / face / vector counts |
-| `GET /photos?limit=&offset=` | Browse the library |
+| `GET /photos?limit=&offset=` | Browse the library; returns `total` for pagination |
 | `GET /photos/{id}/thumbnail` | Thumbnail bytes (always JPEG) |
 | `GET /photos/{id}/file` | Full image; non-web formats such as HEIC are transcoded to JPEG |
 | `POST /search` | `{"query": "red car", "top_k": 10}` |
-| `POST /index` | `{"folder": "/path/to/photos"}` |
+| `POST /photos/upload` | Multipart image upload; returns a job to poll |
+| `POST /index` | `{"folder": "/path/to/photos"}`; returns a job to poll |
+| `GET /jobs/{id}` | Progress of an upload or indexing run |
+| `GET /jobs` | Recent jobs |
 | `POST /faces/find` | Upload a probe face, get photos containing that person |
 | `POST /faces/verify` | Upload two photos, get a similarity score |
+
+### Uploading and indexing
+
+Indexing runs far longer than an HTTP request should, so `POST /photos/upload`
+and `POST /index` return `202` with a job the client polls:
+
+```json
+{ "id": "f446ebcf…", "status": "running", "processed": 1, "total": 2,
+  "indexed": 1, "failed": 1, "errors": ["clip.mov: unsupported file type"] }
+```
+
+Uploads are stored in `data/photos/`, renamed rather than overwritten on name
+collisions, and unsupported files (video, for example) are rejected per file
+instead of failing the whole batch. Jobs run one at a time, since the vector
+indexes are held in memory and saved as a unit.
 
 Photo responses carry `thumbnail_url` and `image_url` rather than server
 filesystem paths, so the frontend can render them directly:

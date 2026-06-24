@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import shutil
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable, Optional, Sequence
 
 from core.config import Settings
 from core.face_pipeline.embedder import FaceEmbedder, get_face_embedder
@@ -31,9 +31,32 @@ def index_folder(
     on_progress: Optional[ProgressCallback] = None,
 ) -> IndexResult:
     """Scan folder and index every new image into metadata + vector stores."""
+    paths = scan_folder(folder, recursive=recursive)
+    return index_paths(
+        paths,
+        ctx=ctx,
+        copy_into_library=copy_into_library,
+        run_faces=run_faces,
+        clip_embedder=clip_embedder,
+        face_embedder=face_embedder,
+        on_progress=on_progress,
+    )
+
+
+def index_paths(
+    paths: Sequence[str | Path],
+    *,
+    ctx: Optional[AppContext] = None,
+    copy_into_library: bool = True,
+    run_faces: bool = True,
+    clip_embedder: Optional[ClipEmbedder] = None,
+    face_embedder: Optional[FaceEmbedder] = None,
+    on_progress: Optional[ProgressCallback] = None,
+) -> IndexResult:
+    """Index an explicit list of image paths."""
     ctx = ctx or get_context()
     settings = ctx.settings
-    paths = scan_folder(folder, recursive=recursive)
+    paths = [Path(p) for p in paths]
     result = IndexResult()
     total = len(paths)
 
@@ -41,8 +64,6 @@ def index_folder(
     faces = face_embedder or (get_face_embedder() if run_faces else None)
 
     for i, src in enumerate(paths, start=1):
-        if on_progress:
-            on_progress(i, total, src.name)
         try:
             photo = _index_one(
                 src,
@@ -59,9 +80,36 @@ def index_folder(
         except Exception as exc:  # noqa: BLE001 — collect per-file failures
             result.failed += 1
             result.errors.append(f"{src}: {exc}")
+        # Reported after the file is done so counts never overstate progress
+        if on_progress:
+            on_progress(i, total, src.name)
 
     ctx.save_indexes()
     return result
+
+
+def reserve_library_path(
+    filename: str,
+    *,
+    ctx: Optional[AppContext] = None,
+) -> Path:
+    """Pick an unused path inside the photo library for an uploaded file.
+
+    Only the base name of the upload is used, so a client cannot steer writes
+    outside the library with a crafted filename.
+    """
+    ctx = ctx or get_context()
+    safe_name = Path(filename).name or "upload.jpg"
+    dest = ctx.settings.photos_dir / safe_name
+    if not dest.exists():
+        return dest
+
+    counter = 2
+    while True:
+        candidate = ctx.settings.photos_dir / f"{dest.stem}_{counter}{dest.suffix}"
+        if not candidate.exists():
+            return candidate
+        counter += 1
 
 
 def _index_one(
