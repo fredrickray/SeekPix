@@ -1,0 +1,25 @@
+# Core
+numpy>=1.26,<3
+Pillow>=10.0
+python-dotenv>=1.0
+exifread>=3.0
+
+# Vector store
+faiss-cpu>=1.7.4
+
+# Semantic search (CLIP)
+torch>=2.1
+open_clip_torch>=2.24
+
+# Face pipeline
+insightface>=0.7.3
+onnxruntime>=1.16
+opencv-python-headless>=4.8
+
+# API surface for SeekPix UI
+fastapi>=0.110
+uvicorn[standard]>=0.27
+python-multipart>=0.0.9
+
+# Dev / test
+pytest>=8.0

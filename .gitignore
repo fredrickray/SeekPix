@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+.eggs/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Environment
+.env
+
+# Runtime data — photos, embeddings, indexes (never commit)
+data/photos/
+data/thumbnails/
+data/indexes/
+data/metadata.db
+data/*.db
+
+# Model caches
+.cache/
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
+*.swp
