@@ -17,7 +17,7 @@ SeekPix UI  ──HTTP──►  api/ (FastAPI)
               └─────────────┬─────────────┘
                             ▼
                          storage
-                   SQLite + FAISS×2 + files
+                SQLite + 2 vector indexes + files
 ```
 
 `core/` never imports FastAPI. The API and CLI both call the same service functions.
@@ -42,7 +42,7 @@ uvicorn api.main:app --reload --port 8000
 | Phase | Scope |
 |-------|--------|
 | 0 | Skeleton — config, layout, deps |
-| 1 | Storage — SQLite + FAISS wrappers |
+| 1 | Storage — SQLite + vector index wrappers |
 | 2 | Ingestion — scan, EXIF, thumbnails |
 | 3 | Semantic search — CLIP + search + CLI |
 | 4 | Face pipeline — detect, embed, match, dedupe |

@@ -41,12 +41,9 @@ class FaceEmbedder:
         self.dim = FACE_DIM
 
     def detect_and_embed(self, path: str | Path) -> list[DetectedFace]:
-        import cv2  # lazy — keeps storage tests free of OpenCV
+        from core.ingestion.image_io import load_image_bgr
 
-        path = Path(path)
-        image = cv2.imread(str(path))
-        if image is None:
-            raise ValueError(f"Could not read image: {path}")
+        image = load_image_bgr(path)
 
         faces = self.app.get(image)
         results: list[DetectedFace] = []

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PIL import Image
+from core.ingestion.image_io import load_image
 
 
 def generate_thumbnail(
@@ -22,9 +22,8 @@ def generate_thumbnail(
     stem = f"{photo_id}_{source.stem}" if photo_id is not None else source.stem
     dest = dest_dir / f"{stem}.jpg"
 
-    with Image.open(source) as img:
-        img = img.convert("RGB")
-        img.thumbnail((size, size))
-        img.save(dest, format="JPEG", quality=85)
+    img = load_image(source)
+    img.thumbnail((size, size))
+    img.save(dest, format="JPEG", quality=85)
 
     return dest

@@ -8,7 +8,8 @@ from pathlib import Path
 from typing import Optional
 
 import exifread
-from PIL import Image
+
+from core.ingestion.image_io import load_image
 
 
 @dataclass
@@ -45,8 +46,7 @@ def extract_metadata(path: str | Path) -> ImageMetadata:
     meta = ImageMetadata()
 
     try:
-        with Image.open(path) as img:
-            meta.width, meta.height = img.size
+        meta.width, meta.height = load_image(path).size
     except OSError:
         pass
 
