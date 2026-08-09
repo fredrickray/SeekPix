@@ -1,1 +1,1 @@
-"""Storage layer: SQLite metadata + FAISS vector indexes."""
+"""Storage layer: SQLite metadata + vector indexes."""

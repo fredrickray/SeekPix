@@ -1,4 +1,4 @@
-"""Semantic search: embed query text, look up CLIP FAISS index."""
+"""Semantic search: embed query text, look up the CLIP vector index."""
 
 from __future__ import annotations
 

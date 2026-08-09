@@ -1,4 +1,4 @@
-"""Face matching against the face FAISS index."""
+"""Face matching against the face vector index."""
 
 from __future__ import annotations
 

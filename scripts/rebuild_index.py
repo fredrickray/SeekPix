@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CLI: rebuild FAISS indexes from scratch (after model change)."""
+"""CLI: rebuild vector indexes from scratch (after model change)."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ from core.storage.db import MetadataDB
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Rebuild SeekPix FAISS indexes")
+    parser = argparse.ArgumentParser(description="Rebuild SeekPix vector indexes")
     parser.add_argument(
         "--faces-only",
         action="store_true",

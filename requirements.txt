@@ -1,11 +1,9 @@
 # Core
 numpy>=1.26,<3
 Pillow>=10.0
+pillow-heif>=0.15
 python-dotenv>=1.0
 exifread>=3.0
-
-# Vector store
-faiss-cpu>=1.7.4
 
 # Semantic search (CLIP)
 torch>=2.1

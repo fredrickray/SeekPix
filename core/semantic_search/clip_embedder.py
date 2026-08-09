@@ -9,9 +9,9 @@ from typing import Optional
 import numpy as np
 import open_clip
 import torch
-from PIL import Image
 
 from core.config import Settings, get_settings
+from core.ingestion.image_io import load_image
 
 # ViT-B-32 openai → 512-d
 CLIP_DIM = 512
@@ -32,8 +32,7 @@ class ClipEmbedder:
 
     @torch.inference_mode()
     def embed_image(self, path: str | Path) -> np.ndarray:
-        path = Path(path)
-        image = self.preprocess(Image.open(path).convert("RGB"))
+        image = self.preprocess(load_image(path))
         image = image.unsqueeze(0).to(self.device)
         features = self.model.encode_image(image)
         features = features / features.norm(dim=-1, keepdim=True)

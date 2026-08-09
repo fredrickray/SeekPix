@@ -4,7 +4,17 @@ from __future__ import annotations
 
 from pathlib import Path
 
-IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
+IMAGE_EXTENSIONS = {
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".webp",
+    ".bmp",
+    ".tif",
+    ".tiff",
+    ".heic",
+    ".heif",
+}
 
 
 def scan_folder(folder: str | Path, recursive: bool = True) -> list[Path]:
