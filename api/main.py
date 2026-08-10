@@ -6,6 +6,7 @@ import io
 import shutil
 import tempfile
 from contextlib import asynccontextmanager
+from datetime import datetime
 from pathlib import Path
 from typing import AsyncIterator, Optional
 
@@ -16,8 +17,10 @@ from pydantic import BaseModel, Field
 
 from core.config import get_settings
 from core.ingestion.image_io import load_image
+from core.ingestion.scanner import IMAGE_EXTENSIONS
 from core.services.context import get_context
-from core.services.indexing import index_folder
+from core.services.indexing import index_folder, index_paths, reserve_library_path
+from core.services.jobs import Job, get_job_registry, make_progress_callback
 from core.services.search import (
     find_same_person,
     library_stats,
@@ -105,16 +108,37 @@ class StatsOut(BaseModel):
     face_vectors: int
 
 
-class IndexOut(BaseModel):
-    indexed: int
-    skipped: int
-    failed: int
-    errors: list[str]
-
-
 class VerifyOut(BaseModel):
     score: Optional[float]
     matched: Optional[bool] = None
+
+
+class PhotoPage(BaseModel):
+    total: int
+    limit: int
+    offset: int
+    items: list[PhotoOut]
+
+
+class JobOut(BaseModel):
+    id: str
+    kind: str
+    status: str
+    total: int
+    processed: int
+    indexed: int
+    skipped: int
+    failed: int
+    current_file: Optional[str] = None
+    errors: list[str] = Field(default_factory=list)
+    error: Optional[str] = None
+    created_at: datetime
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
+
+    @classmethod
+    def from_job(cls, job: Job) -> "JobOut":
+        return cls(**job.snapshot())
 
 
 @app.get("/health")
@@ -127,13 +151,18 @@ def stats() -> StatsOut:
     return StatsOut(**library_stats())
 
 
-@app.get("/photos", response_model=list[PhotoOut])
+@app.get("/photos", response_model=PhotoPage)
 def photos(
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
-) -> list[PhotoOut]:
+) -> PhotoPage:
     items = list_library(limit=limit, offset=offset)
-    return [PhotoOut.from_photo(p) for p in items]
+    return PhotoPage(
+        total=get_context().db.count_photos(),
+        limit=limit,
+        offset=offset,
+        items=[PhotoOut.from_photo(p) for p in items],
+    )
 
 
 @app.get("/photos/{photo_id}/thumbnail")
@@ -171,22 +200,86 @@ def search(body: SearchRequest) -> list[PhotoOut]:
     return [PhotoOut.from_photo(r.photo, score=r.score) for r in results]
 
 
-@app.post("/index", response_model=IndexOut)
-def index(body: IndexRequest) -> IndexOut:
+@app.post("/index", response_model=JobOut, status_code=202)
+def index(body: IndexRequest) -> JobOut:
+    """Start indexing a folder already on the server. Poll /jobs/{id}."""
     folder = Path(body.folder)
     if not folder.exists() or not folder.is_dir():
         raise HTTPException(status_code=400, detail=f"Invalid folder: {folder}")
-    result = index_folder(
-        folder,
-        recursive=body.recursive,
-        run_faces=body.run_faces,
-    )
-    return IndexOut(
-        indexed=result.indexed,
-        skipped=result.skipped,
-        failed=result.failed,
-        errors=result.errors,
-    )
+
+    registry = get_job_registry()
+    job = registry.create("index_folder")
+
+    def work(job: Job):
+        return index_folder(
+            folder,
+            recursive=body.recursive,
+            run_faces=body.run_faces,
+            on_progress=make_progress_callback(job),
+        )
+
+    registry.submit(job, work)
+    return JobOut.from_job(job)
+
+
+@app.post("/photos/upload", response_model=JobOut, status_code=202)
+async def upload_photos(
+    files: list[UploadFile] = File(...),
+    run_faces: bool = Query(True),
+) -> JobOut:
+    """Accept uploaded images, then index them in the background."""
+    if not files:
+        raise HTTPException(status_code=400, detail="No files uploaded")
+
+    get_settings().ensure_dirs()
+    saved: list[Path] = []
+    rejected: list[str] = []
+
+    for upload in files:
+        name = Path(upload.filename or "").name
+        if Path(name).suffix.lower() not in IMAGE_EXTENSIONS:
+            rejected.append(name or "<unnamed>")
+            continue
+        dest = reserve_library_path(name)
+        with open(dest, "wb") as out:
+            shutil.copyfileobj(upload.file, out)
+        saved.append(dest)
+
+    if not saved:
+        raise HTTPException(
+            status_code=400,
+            detail=f"No supported images uploaded. Rejected: {', '.join(rejected)}",
+        )
+
+    registry = get_job_registry()
+    job = registry.create("upload", total=len(saved))
+    job.errors.extend(f"{name}: unsupported file type" for name in rejected)
+    job.failed = len(rejected)
+
+    def work(job: Job):
+        # Files already live in the library, so indexing must not copy them again
+        return index_paths(
+            saved,
+            copy_into_library=False,
+            run_faces=run_faces,
+            on_progress=make_progress_callback(job),
+        )
+
+    registry.submit(job, work)
+    return JobOut.from_job(job)
+
+
+@app.get("/jobs", response_model=list[JobOut])
+def jobs(limit: int = Query(20, ge=1, le=100)) -> list[JobOut]:
+    return [JobOut.from_job(j) for j in get_job_registry().list(limit=limit)]
+
+
+@app.get("/jobs/{job_id}", response_model=JobOut)
+def job_status(job_id: str) -> JobOut:
+    job = get_job_registry().get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"No job with id {job_id}")
+    return JobOut.from_job(job)
 
 
 @app.post("/faces/find", response_model=list[FaceMatchOut])
