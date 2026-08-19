@@ -83,7 +83,7 @@ def get_settings() -> Settings:
         clip_device=_env("SEEKPIX_CLIP_DEVICE", "cpu"),
         clip_index_path=indexes_dir / "clip.npy",
         face_det_size=_env_int("SEEKPIX_FACE_DET_SIZE", 640),
-        face_match_threshold=_env_float("SEEKPIX_FACE_MATCH_THRESHOLD", 0.40),
+        face_match_threshold=_env_float("SEEKPIX_FACE_MATCH_THRESHOLD", 0.70),
         face_device=_env("SEEKPIX_FACE_DEVICE", "cpu"),
         face_index_path=indexes_dir / "faces.npy",
         thumb_size=_env_int("SEEKPIX_THUMB_SIZE", 256),

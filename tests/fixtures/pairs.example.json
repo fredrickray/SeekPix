@@ -1,0 +1,8 @@
+{
+  "same_person": [
+    ["same_person/person_a_1.jpg", "same_person/person_a_2.jpg"]
+  ],
+  "different_people": [
+    ["different/person_x.jpg", "different/person_y.jpg"]
+  ]
+}

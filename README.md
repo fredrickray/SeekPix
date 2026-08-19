@@ -93,6 +93,23 @@ filesystem paths, so the frontend can render them directly:
 | 4 | Face pipeline — detect, embed, match, dedupe |
 | 5 | Services + API — use-cases + FastAPI for UI |
 
-## Data
+## Face match threshold
 
-All runtime data lives under `data/` (gitignored). Whatever you ingest is the entire searchable library for that instance.
+Default `SEEKPIX_FACE_MATCH_THRESHOLD` is **0.70** (cosine similarity).
+
+That value was chosen from a probe against the demo library: strong candidates
+scored ≥ 0.77, ambiguous mid-scores sat around 0.60–0.63, and clear non-matches
+were ≤ 0.14. Identity verification prefers rejecting a borderline same-person
+pair over accepting a different person, so the cut sits above the ambiguous
+band.
+
+Refine it with labeled fixtures:
+
+```bash
+cp tests/fixtures/pairs.example.json tests/fixtures/pairs.json
+# edit paths, drop images under tests/fixtures/
+python scripts/calibrate_face_threshold.py --pairs tests/fixtures/pairs.json
+```
+
+Then set `SEEKPIX_FACE_MATCH_THRESHOLD` in `.env` and restart the API.
+
