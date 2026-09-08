@@ -32,7 +32,7 @@ def tmp_settings(tmp_path: Path) -> Settings:
         clip_device="cpu",
         clip_index_path=indexes / "clip.npy",
         face_det_size=640,
-        face_match_threshold=0.40,
+        face_match_threshold=0.70,
         face_device="cpu",
         face_index_path=indexes / "faces.npy",
         thumb_size=128,
