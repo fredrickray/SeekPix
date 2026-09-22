@@ -46,6 +46,8 @@ uvicorn api.main:app --reload --port 8000
 | `GET /photos?limit=&offset=` | Browse the library; returns `total` for pagination |
 | `GET /photos/{id}/thumbnail` | Thumbnail bytes (always JPEG) |
 | `GET /photos/{id}/file` | Full image; non-web formats such as HEIC are transcoded to JPEG |
+| `DELETE /photos/{id}` | Remove a photo from the library and compact its vectors |
+| `POST /indexes/compact` | Drop orphaned vectors (interrupted runs / older deletes) |
 | `POST /search` | `{"query": "red car", "top_k": 10}` |
 | `POST /photos/upload` | Multipart image upload; returns a job to poll |
 | `POST /index` | `{"folder": "/path/to/photos"}`; returns a job to poll |
@@ -68,6 +70,16 @@ Uploads are stored in `data/photos/`, renamed rather than overwritten on name
 collisions, and unsupported files (video, for example) are rejected per file
 instead of failing the whole batch. Jobs run one at a time, since the vector
 indexes are held in memory and saved as a unit.
+
+### Deleting photos
+
+`DELETE /photos/{id}` removes the SQLite row and face rows, deletes the
+thumbnail, deletes the source file only when it lives under `data/photos/`
+(uploads), and compacts the CLIP / face vector matrix so IDs stay contiguous.
+Demo folders indexed with `--no-copy` keep their original files on disk.
+
+`POST /indexes/compact` cleans orphaned vectors if a previous run left any
+behind.
 
 Photo responses carry `thumbnail_url` and `image_url` rather than server
 filesystem paths, so the frontend can render them directly:

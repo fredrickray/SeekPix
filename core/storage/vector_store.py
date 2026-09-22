@@ -74,6 +74,24 @@ class VectorStore:
     def save(self) -> None:
         np.save(self.index_path, self.vectors)
 
+    def compact(self, remove_ids: set[int]) -> dict[int, int]:
+        """Drop rows by id and renumber survivors 0..n-1.
+
+        Returns ``{old_id: new_id}`` for every kept row so callers can rewrite
+        foreign keys in SQLite. IDs in ``remove_ids`` that are out of range are
+        ignored.
+        """
+        matrix = self.vectors
+        n = matrix.shape[0]
+        keep = [i for i in range(n) if i not in remove_ids]
+        mapping = {old: new for new, old in enumerate(keep)}
+        if keep:
+            self._vectors = np.ascontiguousarray(matrix[keep], dtype=np.float32)
+        else:
+            self._vectors = np.zeros((0, self.dim), dtype=np.float32)
+        self._pending.clear()
+        return mapping
+
     def reset(self) -> None:
         self._vectors = np.zeros((0, self.dim), dtype=np.float32)
         self._pending.clear()
