@@ -21,6 +21,7 @@ from core.ingestion.scanner import IMAGE_EXTENSIONS
 from core.services.context import get_context
 from core.services.indexing import index_folder, index_paths, reserve_library_path
 from core.services.jobs import Job, get_job_registry, make_progress_callback
+from core.services.library import compact_orphans, delete_photo
 from core.services.search import (
     find_same_person,
     library_stats,
@@ -141,6 +142,22 @@ class JobOut(BaseModel):
         return cls(**job.snapshot())
 
 
+class CompactOut(BaseModel):
+    clip_before: int
+    clip_after: int
+    faces_before: int
+    faces_after: int
+
+
+class DeleteOut(BaseModel):
+    photo_id: int
+    filename: str
+    deleted_file: bool
+    deleted_thumbnail: bool
+    removed_clip_vectors: int
+    removed_face_vectors: int
+
+
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok"}
@@ -192,6 +209,34 @@ def photo_file(photo_id: int) -> Response:
     buffer = io.BytesIO()
     load_image(path).save(buffer, format="JPEG", quality=90)
     return Response(content=buffer.getvalue(), media_type="image/jpeg")
+
+
+@app.delete("/photos/{photo_id}", response_model=DeleteOut)
+def photos_delete(photo_id: int) -> DeleteOut:
+    try:
+        result = delete_photo(photo_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return DeleteOut(
+        photo_id=result.photo_id,
+        filename=result.filename,
+        deleted_file=result.deleted_file,
+        deleted_thumbnail=result.deleted_thumbnail,
+        removed_clip_vectors=result.removed_clip_vectors,
+        removed_face_vectors=result.removed_face_vectors,
+    )
+
+
+@app.post("/indexes/compact", response_model=CompactOut)
+def indexes_compact() -> CompactOut:
+    """Remove orphaned vectors left behind by interrupted runs or older deletes."""
+    result = compact_orphans()
+    return CompactOut(
+        clip_before=result.clip_before,
+        clip_after=result.clip_after,
+        faces_before=result.faces_before,
+        faces_after=result.faces_after,
+    )
 
 
 @app.post("/search", response_model=list[PhotoOut])
