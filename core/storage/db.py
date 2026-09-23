@@ -252,3 +252,60 @@ class MetadataDB:
         with self.connect() as conn:
             row = conn.execute("SELECT COUNT(*) AS c FROM faces").fetchone()
         return int(row["c"])
+
+    def delete_photo(self, photo_id: int) -> bool:
+        """Delete a photo and its faces (FK CASCADE). Returns False if missing."""
+        with self.connect() as conn:
+            cur = conn.execute("DELETE FROM photos WHERE id = ?", (photo_id,))
+            return cur.rowcount > 0
+
+    def list_all_photos(self) -> list[Photo]:
+        with self.connect() as conn:
+            rows = conn.execute("SELECT * FROM photos ORDER BY id").fetchall()
+        return [_row_to_photo(r) for r in rows]
+
+    def list_all_faces(self) -> list[Face]:
+        with self.connect() as conn:
+            rows = conn.execute("SELECT * FROM faces ORDER BY id").fetchall()
+        return [_row_to_face(r) for r in rows]
+
+    def remap_clip_vector_ids(self, mapping: dict[int, int]) -> None:
+        """Rewrite clip_vector_id values after a vector-store compact."""
+        if not mapping:
+            return
+        with self.connect() as conn:
+            # Temporary negative ids avoid unique collisions while remapping.
+            for old_id, new_id in mapping.items():
+                if old_id == new_id:
+                    continue
+                conn.execute(
+                    "UPDATE photos SET clip_vector_id = ? WHERE clip_vector_id = ?",
+                    (-(old_id + 1), old_id),
+                )
+            for old_id, new_id in mapping.items():
+                if old_id == new_id:
+                    continue
+                conn.execute(
+                    "UPDATE photos SET clip_vector_id = ? WHERE clip_vector_id = ?",
+                    (new_id, -(old_id + 1)),
+                )
+
+    def remap_face_vector_ids(self, mapping: dict[int, int]) -> None:
+        """Rewrite face_vector_id values after a vector-store compact."""
+        if not mapping:
+            return
+        with self.connect() as conn:
+            for old_id, new_id in mapping.items():
+                if old_id == new_id:
+                    continue
+                conn.execute(
+                    "UPDATE faces SET face_vector_id = ? WHERE face_vector_id = ?",
+                    (-(old_id + 1), old_id),
+                )
+            for old_id, new_id in mapping.items():
+                if old_id == new_id:
+                    continue
+                conn.execute(
+                    "UPDATE faces SET face_vector_id = ? WHERE face_vector_id = ?",
+                    (new_id, -(old_id + 1)),
+                )
